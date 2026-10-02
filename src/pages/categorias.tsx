@@ -1,5 +1,10 @@
 import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
 import axios from "axios";
+
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import ExcelJS from "exceljs";
+
 import {
   listarCategoriasActivas,
   crearCategoria,
@@ -40,6 +45,7 @@ function Categorias() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
     try {
       if (modoEdicion && form.idCategoria !== null) {
         await actualizarCategoria(form.idCategoria, form);
@@ -60,6 +66,95 @@ function Categorias() {
   const handleModificar = (categoria: Categoria) => {
     setForm(categoria);
     setModoEdicion(true);
+  };
+
+  const exportarPDF = () => {
+    const doc = new jsPDF();
+
+    // 1. Título del reporte
+    doc.text("Listado de Categorías", 14, 15);
+
+    // 2. Preparar los datos de la tabla
+    const columnas = ["Nombre", "Direccion"];
+    const filas = categorias.map((categoria) => [
+      categoria.nombre,
+      categoria.descripcion,
+    ]);
+
+    // 3. Dibujar la tabla
+    autoTable(doc, {
+      head: [columnas],
+      body: filas,
+      startY: 20, // para que no choque con el título
+    });
+
+    // 4. Descargar
+    doc.save("categorias.pdf");
+  };
+
+  const exportarExcel = async () => {
+    // 1. Crear el libro y la hoja
+    const libro = new ExcelJS.Workbook();
+    const hoja = libro.addWorksheet("Categorías");
+
+    // 2. Título y fecha
+    hoja.addRow(["Listado de Categorías"]).font = { size: 16, bold: true };
+    hoja.addRow(["Fecha: " + new Date().toLocaleDateString()]);
+    hoja.addRow([]); // fila vacía de separación
+
+    // 3. Encabezados de la tabla (mismos colores que el PDF)
+    const encabezado = hoja.addRow(["Nombre", "Descripción"]);
+    encabezado.eachCell((celda) => {
+      celda.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      celda.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF166534" },
+      };
+      celda.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    });
+
+    // 4. Filas de datos
+    categorias.forEach((categoria, indice) => {
+      const fila = hoja.addRow([categoria.nombre, categoria.descripcion]);
+      fila.eachCell((celda) => {
+        celda.border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+        // filas alternadas en verde claro, como en el PDF
+        if (indice % 2 === 1) {
+          celda.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFDCFCE7" },
+          };
+        }
+      });
+    });
+
+    // 5. Ancho de columnas
+    hoja.getColumn(1).width = 30;
+    hoja.getColumn(2).width = 60;
+
+    // 6. Generar el archivo y descargarlo
+    const buffer = await libro.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.download = "categorias.xlsx";
+    enlace.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleAnular = async (idCategoria: number) => {
@@ -115,6 +210,14 @@ function Categorias() {
         <button type="submit">Guardar</button>
       </form>
       <h2>Listado de Categorías</h2>
+      <button
+        onClick={exportarPDF}
+        className="bg-green-500 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded mb-4"
+      ></button>
+      <button
+        onClick={exportarExcel}
+        className="bg-green-500 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded mb-4"
+      ></button>
       <table>
         <thead>
           <tr>
