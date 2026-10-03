@@ -14,3 +14,8 @@ export const actualizarProducto = (
 
 export const anularProducto = (id: number) =>
   api.put<Producto>(`/productos/anular/${id}`);
+
+export const mostrarProductosActivosFiltro = (nombre: string) =>
+  api.get<Producto[]>("/productos/activosFiltro", {
+    params: { nombre },
+  });

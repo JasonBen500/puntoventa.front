@@ -11,7 +11,7 @@ import {
   actualizarCliente,
   anularCliente,
 } from "../services/clienteServices";
-import type { Cliente } from "../types/Cliente";
+import type { Cliente } from "../types/cliente";
 
 const formInicial: Cliente = {
   idCliente: null,

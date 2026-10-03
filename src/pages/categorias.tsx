@@ -1,291 +1,182 @@
-import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
+import { useState } from "react";
 import axios from "axios";
-
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import ExcelJS from "exceljs";
 
-import {
-  listarCategoriasActivas,
-  crearCategoria,
-  actualizarCategoria,
-  anularCategoria,
-} from "../services/categoriaServices";
+import { listarCategoriasActivas } from "../services/categoriaServices";
+import { mostrarClientesActivosFiltroNombre } from "../services/clienteServices";
+import { mostrarProductosActivosFiltro } from "../services/productoServices";
 import type { Categoria } from "../types/categoria";
+import type { Cliente } from "../types/cliente";
+import type { Producto } from "../types/Producto";
 
-const formInicial: Categoria = {
-  idCategoria: null,
-  nombre: "",
-  descripcion: "",
+const obtenerMensajeError = (error: unknown): string => {
+  if (axios.isAxiosError(error)) {
+    return error.response?.data?.mensaje ?? error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Ocurrió un error inesperado";
 };
 
-function Categorias() {
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [form, setForm] = useState<Categoria>(formInicial);
-  const [modoEdicion, setModoEdicion] = useState(false);
+function ReporteCategorias() {
+  const [filtro, setFiltro] = useState("");
   const [mensaje, setMensaje] = useState("");
 
-  const obtenerMensajeError = (error: unknown): string => {
-    if (axios.isAxiosError(error)) {
-      return error.response?.data?.mensaje ?? error.message;
-    }
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return "Ocurrió un error inesperado";
-  };
-
-  const cargarCategorias = async () => {
+  const exportar = async () => {
     try {
-      const respuesta = await listarCategoriasActivas();
-      setCategorias(respuesta.data);
-    } catch (error) {
-      setMensaje(obtenerMensajeError(error));
-      console.error("Error al listar categorías", error);
-    }
-  };
-
-  useEffect(() => {
-    cargarCategorias();
-  }, []);
-
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    try {
-      if (modoEdicion && form.idCategoria !== null) {
-        await actualizarCategoria(form.idCategoria, form);
-        setMensaje("Categoría actualizada correctamente");
-      } else {
-        await crearCategoria(form);
-        setMensaje("Categoría creada correctamente");
-      }
-      setForm(formInicial);
-      setModoEdicion(false);
-      cargarCategorias();
-    } catch (error) {
-      setMensaje(obtenerMensajeError(error));
-      console.error("Error al guardar categoría", error);
-    }
-  };
-
-  const handleModificar = (categoria: Categoria) => {
-    setForm({ ...categoria });
-    setModoEdicion(true);
-  };
-
-  const cancelarEdicion = () => {
-    setForm(formInicial);
-    setModoEdicion(false);
-  };
-
-  const generarPDF = () => {
-    const doc = new jsPDF();
-
-    // 1. Título del reporte
-    doc.text("Listado de Categorías", 14, 15);
-
-    // 2. Preparar los datos de la tabla
-    const columnas = ["Nombre", "Direccion"];
-    const filas = categorias.map((categoria) => [
-      categoria.nombre,
-      categoria.descripcion,
-    ]);
-
-    // 3. Dibujar la tabla
-    autoTable(doc, {
-      head: [columnas],
-      body: filas,
-      startY: 20, // para que no choque con el título
-    });
-
-    return doc;
-  };
-
-  const exportarPDF = () => {
-    const doc = generarPDF();
-    doc.save("categorias.pdf");
-  };
-
-  const verPDF = () => {
-    const doc = generarPDF();
-    const blobUrl = doc.output("bloburl");
-    window.open(blobUrl, "_blank");
-  };
-
-  const exportarExcel = async () => {
-    // 1. Crear el libro y la hoja
-    const libro = new ExcelJS.Workbook();
-    const hoja = libro.addWorksheet("Categorías");
-
-    // 2. Título y fecha
-    hoja.addRow(["Listado de Categorías"]).font = { size: 16, bold: true };
-    hoja.addRow(["Fecha: " + new Date().toLocaleDateString()]);
-    hoja.addRow([]); // fila vacía de separación
-
-    // 3. Encabezados de la tabla (mismos colores que el PDF)
-    const encabezado = hoja.addRow(["Nombre", "Descripción"]);
-    encabezado.eachCell((celda) => {
-      celda.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      celda.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FF166534" },
-      };
-      celda.border = {
-        top: { style: "thin" },
-        left: { style: "thin" },
-        bottom: { style: "thin" },
-        right: { style: "thin" },
-      };
-    });
-
-    // 4. Filas de datos
-    categorias.forEach((categoria, indice) => {
-      const fila = hoja.addRow([categoria.nombre, categoria.descripcion]);
-      fila.eachCell((celda) => {
-        celda.border = {
-          top: { style: "thin" },
-          left: { style: "thin" },
-          bottom: { style: "thin" },
-          right: { style: "thin" },
-        };
-        // filas alternadas en verde claro, como en el PDF
-        if (indice % 2 === 1) {
-          celda.fill = {
-            type: "pattern",
-            pattern: "solid",
-            fgColor: { argb: "FFDCFCE7" },
-          };
-        }
+      const respuesta = await listarCategoriasActivas(filtro);
+      const doc = new jsPDF();
+      doc.text("Reporte de Categorías", 14, 15);
+      autoTable(doc, {
+        head: [["Nombre", "Descripción"]],
+        body: respuesta.data.map((c: Categoria) => [c.nombre, c.descripcion]),
+        startY: 20,
       });
-    });
-
-    // 5. Ancho de columnas
-    hoja.getColumn(1).width = 30;
-    hoja.getColumn(2).width = 60;
-
-    // 6. Generar el archivo y descargarlo
-    const buffer = await libro.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    const url = URL.createObjectURL(blob);
-    const enlace = document.createElement("a");
-    enlace.href = url;
-    enlace.download = "categorias.xlsx";
-    enlace.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleAnular = async (idCategoria: number) => {
-    const confirmar = window.confirm(
-      "¿Seguro que deseas anular esta categoría?",
-    );
-    if (!confirmar) return;
-    try {
-      await anularCategoria(idCategoria);
-      setMensaje("Categoría anulada correctamente");
-      cargarCategorias();
+      doc.save("reporte-categorias.pdf");
+      setMensaje("");
     } catch (error) {
       setMensaje(obtenerMensajeError(error));
-      console.error("Error al anular la categoría", error);
+      console.error("Error al generar el reporte de categorías", error);
     }
   };
 
   return (
-    <div>
-      <h2>{modoEdicion ? "Modificar Categoría" : "Ingresar Categoría"}</h2>
-      {mensaje && <p>{mensaje}</p>}
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label htmlFor="nombre">Nombre:</label>
-          <input
-            type="text"
-            id="nombre"
-            name="nombre"
-            value={form.nombre}
-            onChange={handleChange}
-            maxLength={100}
-            required
-          />
-        </div>
-        <div>
-          <label htmlFor="descripcion">Descripción:</label>
-          <input
-            type="text"
-            id="descripcion"
-            name="descripcion"
-            value={form.descripcion}
-            onChange={handleChange}
-            maxLength={255}
-          />
-        </div>
-        <button type="submit">{modoEdicion ? "Actualizar" : "Guardar"}</button>
-        {modoEdicion && (
-          <button type="button" onClick={cancelarEdicion}>
-            Cancelar
-          </button>
-        )}
-      </form>
-      <h2>Listado de Categorías</h2>
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="font-bold text-lg mb-4">Reporte de Categorías</h3>
+      <label htmlFor="filtroCategorias" className="block mb-1">
+        Nombre:
+      </label>
+      <input
+        type="text"
+        id="filtroCategorias"
+        value={filtro}
+        onChange={(e) => setFiltro(e.target.value)}
+        className="border w-full px-2 py-1 rounded mb-4"
+      />
+      {mensaje && <p className="text-red-600 mb-2">{mensaje}</p>}
       <button
-        onClick={exportarPDF}
-        className="bg-green-500 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded mb-4"
+        onClick={exportar}
+        className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
       >
-        Exportar PDF
+        Exportar a PDF
       </button>
-      <button
-        onClick={verPDF}
-        className="bg-sky-500 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded mb-4"
-      >
-        Ver PDF
-      </button>
-      <button
-        onClick={exportarExcel}
-        className="bg-green-500 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded mb-4"
-      >
-        Exportar Excel
-      </button>
-      <table>
-        <thead>
-          <tr>
-            <th>Nombre</th>
-            <th>Descripción</th>
-            <th>Modificar</th>
-            <th>Anular</th>
-          </tr>
-        </thead>
-        <tbody>
-          {categorias.map((categoria) => (
-            <tr key={categoria.idCategoria}>
-              <td>{categoria.nombre}</td>
-              <td>{categoria.descripcion}</td>
-              <td>
-                <button onClick={() => handleModificar(categoria)}>
-                  Modificar
-                </button>
-              </td>
-              <td>
-                <button
-                  onClick={() =>
-                    categoria.idCategoria !== null &&
-                    handleAnular(categoria.idCategoria)
-                  }
-                >
-                  Anular
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
-export default Categorias;
+
+function ReporteClientes() {
+  const [filtro, setFiltro] = useState("");
+  const [mensaje, setMensaje] = useState("");
+
+  const exportar = async () => {
+    try {
+      const respuesta = await mostrarClientesActivosFiltroNombre(filtro);
+      const doc = new jsPDF();
+      doc.text("Reporte de Clientes", 14, 15);
+      autoTable(doc, {
+        head: [["Nombre", "Apellido", "Email", "Teléfono"]],
+        body: respuesta.data.map((c: Cliente) => [
+          c.nombre,
+          c.apellido,
+          c.email,
+          c.telefono,
+        ]),
+        startY: 20,
+      });
+      doc.save("reporte-clientes.pdf");
+      setMensaje("");
+    } catch (error) {
+      setMensaje(obtenerMensajeError(error));
+      console.error("Error al generar el reporte de clientes", error);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="font-bold text-lg mb-4">Reporte de Clientes</h3>
+      <label htmlFor="filtroClientes" className="block mb-1">
+        Nombre:
+      </label>
+      <input
+        type="text"
+        id="filtroClientes"
+        value={filtro}
+        onChange={(e) => setFiltro(e.target.value)}
+        className="border w-full px-2 py-1 rounded mb-4"
+      />
+      {mensaje && <p className="text-red-600 mb-2">{mensaje}</p>}
+      <button
+        onClick={exportar}
+        className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+      >
+        Exportar a PDF
+      </button>
+    </div>
+  );
+}
+
+function ReporteProductos() {
+  const [filtro, setFiltro] = useState("");
+  const [mensaje, setMensaje] = useState("");
+
+  const exportar = async () => {
+    try {
+      const respuesta = await mostrarProductosActivosFiltro(filtro);
+      const doc = new jsPDF();
+      doc.text("Reporte de Productos", 14, 15);
+      autoTable(doc, {
+        head: [["Nombre", "Precio", "Stock"]],
+        body: respuesta.data.map((p: Producto) => [
+          p.nombre,
+          p.precio.toFixed(2),
+          String(p.stock),
+        ]),
+        startY: 20,
+      });
+      doc.save("reporte-productos.pdf");
+      setMensaje("");
+    } catch (error) {
+      setMensaje(obtenerMensajeError(error));
+      console.error("Error al generar el reporte de productos", error);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="font-bold text-lg mb-4">Reporte de Productos</h3>
+      <label htmlFor="filtroProductos" className="block mb-1">
+        Nombre:
+      </label>
+      <input
+        type="text"
+        id="filtroProductos"
+        value={filtro}
+        onChange={(e) => setFiltro(e.target.value)}
+        className="border w-full px-2 py-1 rounded mb-4"
+      />
+      {mensaje && <p className="text-red-600 mb-2">{mensaje}</p>}
+      <button
+        onClick={exportar}
+        className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+      >
+        Exportar a PDF
+      </button>
+    </div>
+  );
+}
+
+function Reportes() {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6">Reportes</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <ReporteCategorias />
+        <ReporteClientes />
+        <ReporteProductos />
+      </div>
+    </div>
+  );
+}
+export default Reportes;

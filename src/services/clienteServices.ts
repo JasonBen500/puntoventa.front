@@ -1,5 +1,5 @@
 import api from "../api/axios";
-import type { Cliente } from "../types/Cliente";
+import type { Cliente } from "../types/cliente";
 
 export const listarClientesActivos = () =>
   api.get<Cliente[]>("/clientes/mostrarActivos");
@@ -14,3 +14,8 @@ export const actualizarCliente = (
 
 export const anularCliente = (id: number) =>
   api.put<Cliente>(`/clientes/anular/${id}`);
+
+export const mostrarClientesActivosFiltroNombre = (nombre: string) =>
+  api.get<Cliente[]>("/clientes/mostrarNombresActivosFiltro", {
+    params: { nombre },
+  });
