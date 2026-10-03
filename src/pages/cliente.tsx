@@ -6,22 +6,24 @@ import autoTable from "jspdf-autotable";
 import ExcelJS from "exceljs";
 
 import {
-  listarCategoriasActivas,
-  crearCategoria,
-  actualizarCategoria,
-  anularCategoria,
-} from "../services/categoriaServices";
-import type { Categoria } from "../types/categoria";
+  listarClientesActivos,
+  crearCliente,
+  actualizarCliente,
+  anularCliente,
+} from "../services/clienteServices";
+import type { Cliente } from "../types/Cliente";
 
-const formInicial: Categoria = {
-  idCategoria: null,
+const formInicial: Cliente = {
+  idCliente: null,
   nombre: "",
-  descripcion: "",
+  apellido: "",
+  email: "",
+  telefono: "",
 };
 
-function Categorias() {
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [form, setForm] = useState<Categoria>(formInicial);
+function Clientes() {
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [form, setForm] = useState<Cliente>(formInicial);
   const [modoEdicion, setModoEdicion] = useState(false);
   const [mensaje, setMensaje] = useState("");
 
@@ -35,18 +37,18 @@ function Categorias() {
     return "Ocurrió un error inesperado";
   };
 
-  const cargarCategorias = async () => {
+  const cargarClientes = async () => {
     try {
-      const respuesta = await listarCategoriasActivas();
-      setCategorias(respuesta.data);
+      const respuesta = await listarClientesActivos();
+      setClientes(respuesta.data);
     } catch (error) {
       setMensaje(obtenerMensajeError(error));
-      console.error("Error al listar categorías", error);
+      console.error("Error al listar clientes", error);
     }
   };
 
   useEffect(() => {
-    cargarCategorias();
+    cargarClientes();
   }, []);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -58,24 +60,24 @@ function Categorias() {
     e.preventDefault();
 
     try {
-      if (modoEdicion && form.idCategoria !== null) {
-        await actualizarCategoria(form.idCategoria, form);
-        setMensaje("Categoría actualizada correctamente");
+      if (modoEdicion && form.idCliente !== null) {
+        await actualizarCliente(form.idCliente, form);
+        setMensaje("Cliente actualizado correctamente");
       } else {
-        await crearCategoria(form);
-        setMensaje("Categoría creada correctamente");
+        await crearCliente(form);
+        setMensaje("Cliente creado correctamente");
       }
       setForm(formInicial);
       setModoEdicion(false);
-      cargarCategorias();
+      cargarClientes();
     } catch (error) {
       setMensaje(obtenerMensajeError(error));
-      console.error("Error al guardar categoría", error);
+      console.error("Error al guardar cliente", error);
     }
   };
 
-  const handleModificar = (categoria: Categoria) => {
-    setForm({ ...categoria });
+  const handleModificar = (cliente: Cliente) => {
+    setForm({ ...cliente });
     setModoEdicion(true);
   };
 
@@ -87,21 +89,20 @@ function Categorias() {
   const generarPDF = () => {
     const doc = new jsPDF();
 
-    // 1. Título del reporte
-    doc.text("Listado de Categorías", 14, 15);
+    doc.text("Listado de Clientes", 14, 15);
 
-    // 2. Preparar los datos de la tabla
-    const columnas = ["Nombre", "Direccion"];
-    const filas = categorias.map((categoria) => [
-      categoria.nombre,
-      categoria.descripcion,
+    const columnas = ["Nombre", "Apellido", "Email", "Teléfono"];
+    const filas = clientes.map((cliente) => [
+      cliente.nombre,
+      cliente.apellido,
+      cliente.email,
+      cliente.telefono,
     ]);
 
-    // 3. Dibujar la tabla
     autoTable(doc, {
       head: [columnas],
       body: filas,
-      startY: 20, // para que no choque con el título
+      startY: 20,
     });
 
     return doc;
@@ -109,7 +110,7 @@ function Categorias() {
 
   const exportarPDF = () => {
     const doc = generarPDF();
-    doc.save("categorias.pdf");
+    doc.save("clientes.pdf");
   };
 
   const verPDF = () => {
@@ -119,17 +120,14 @@ function Categorias() {
   };
 
   const exportarExcel = async () => {
-    // 1. Crear el libro y la hoja
     const libro = new ExcelJS.Workbook();
-    const hoja = libro.addWorksheet("Categorías");
+    const hoja = libro.addWorksheet("Clientes");
 
-    // 2. Título y fecha
-    hoja.addRow(["Listado de Categorías"]).font = { size: 16, bold: true };
+    hoja.addRow(["Listado de Clientes"]).font = { size: 16, bold: true };
     hoja.addRow(["Fecha: " + new Date().toLocaleDateString()]);
-    hoja.addRow([]); // fila vacía de separación
+    hoja.addRow([]);
 
-    // 3. Encabezados de la tabla (mismos colores que el PDF)
-    const encabezado = hoja.addRow(["Nombre", "Descripción"]);
+    const encabezado = hoja.addRow(["Nombre", "Apellido", "Email", "Teléfono"]);
     encabezado.eachCell((celda) => {
       celda.font = { bold: true, color: { argb: "FFFFFFFF" } };
       celda.fill = {
@@ -145,9 +143,13 @@ function Categorias() {
       };
     });
 
-    // 4. Filas de datos
-    categorias.forEach((categoria, indice) => {
-      const fila = hoja.addRow([categoria.nombre, categoria.descripcion]);
+    clientes.forEach((cliente, indice) => {
+      const fila = hoja.addRow([
+        cliente.nombre,
+        cliente.apellido,
+        cliente.email,
+        cliente.telefono,
+      ]);
       fila.eachCell((celda) => {
         celda.border = {
           top: { style: "thin" },
@@ -155,7 +157,6 @@ function Categorias() {
           bottom: { style: "thin" },
           right: { style: "thin" },
         };
-        // filas alternadas en verde claro, como en el PDF
         if (indice % 2 === 1) {
           celda.fill = {
             type: "pattern",
@@ -166,11 +167,11 @@ function Categorias() {
       });
     });
 
-    // 5. Ancho de columnas
-    hoja.getColumn(1).width = 30;
-    hoja.getColumn(2).width = 60;
+    hoja.getColumn(1).width = 25;
+    hoja.getColumn(2).width = 25;
+    hoja.getColumn(3).width = 35;
+    hoja.getColumn(4).width = 20;
 
-    // 6. Generar el archivo y descargarlo
     const buffer = await libro.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -178,29 +179,27 @@ function Categorias() {
     const url = URL.createObjectURL(blob);
     const enlace = document.createElement("a");
     enlace.href = url;
-    enlace.download = "categorias.xlsx";
+    enlace.download = "clientes.xlsx";
     enlace.click();
     URL.revokeObjectURL(url);
   };
 
-  const handleAnular = async (idCategoria: number) => {
-    const confirmar = window.confirm(
-      "¿Seguro que deseas anular esta categoría?",
-    );
+  const handleAnular = async (idCliente: number) => {
+    const confirmar = window.confirm("¿Seguro que deseas anular este cliente?");
     if (!confirmar) return;
     try {
-      await anularCategoria(idCategoria);
-      setMensaje("Categoría anulada correctamente");
-      cargarCategorias();
+      await anularCliente(idCliente);
+      setMensaje("Cliente anulado correctamente");
+      cargarClientes();
     } catch (error) {
       setMensaje(obtenerMensajeError(error));
-      console.error("Error al anular la categoría", error);
+      console.error("Error al anular el cliente", error);
     }
   };
 
   return (
     <div>
-      <h2>{modoEdicion ? "Modificar Categoría" : "Ingresar Categoría"}</h2>
+      <h2>{modoEdicion ? "Modificar Cliente" : "Ingresar Cliente"}</h2>
       {mensaje && <p>{mensaje}</p>}
       <form onSubmit={handleSubmit}>
         <div>
@@ -216,14 +215,38 @@ function Categorias() {
           />
         </div>
         <div>
-          <label htmlFor="descripcion">Descripción:</label>
+          <label htmlFor="apellido">Apellido:</label>
           <input
             type="text"
-            id="descripcion"
-            name="descripcion"
-            value={form.descripcion}
+            id="apellido"
+            name="apellido"
+            value={form.apellido}
             onChange={handleChange}
-            maxLength={255}
+            maxLength={100}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="email">Email:</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            value={form.email}
+            onChange={handleChange}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="telefono">Teléfono:</label>
+          <input
+            type="text"
+            id="telefono"
+            name="telefono"
+            value={form.telefono}
+            onChange={handleChange}
+            maxLength={15}
+            required
           />
         </div>
         <button type="submit">{modoEdicion ? "Actualizar" : "Guardar"}</button>
@@ -233,7 +256,7 @@ function Categorias() {
           </button>
         )}
       </form>
-      <h2>Listado de Categorías</h2>
+      <h2>Listado de Clientes</h2>
       <button
         onClick={exportarPDF}
         className="bg-green-500 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded mb-4"
@@ -256,26 +279,30 @@ function Categorias() {
         <thead>
           <tr>
             <th>Nombre</th>
-            <th>Descripción</th>
+            <th>Apellido</th>
+            <th>Email</th>
+            <th>Teléfono</th>
             <th>Modificar</th>
             <th>Anular</th>
           </tr>
         </thead>
         <tbody>
-          {categorias.map((categoria) => (
-            <tr key={categoria.idCategoria}>
-              <td>{categoria.nombre}</td>
-              <td>{categoria.descripcion}</td>
+          {clientes.map((cliente) => (
+            <tr key={cliente.idCliente}>
+              <td>{cliente.nombre}</td>
+              <td>{cliente.apellido}</td>
+              <td>{cliente.email}</td>
+              <td>{cliente.telefono}</td>
               <td>
-                <button onClick={() => handleModificar(categoria)}>
+                <button onClick={() => handleModificar(cliente)}>
                   Modificar
                 </button>
               </td>
               <td>
                 <button
                   onClick={() =>
-                    categoria.idCategoria !== null &&
-                    handleAnular(categoria.idCategoria)
+                    cliente.idCliente !== null &&
+                    handleAnular(cliente.idCliente)
                   }
                 >
                   Anular
@@ -288,4 +315,4 @@ function Categorias() {
     </div>
   );
 }
-export default Categorias;
+export default Clientes;

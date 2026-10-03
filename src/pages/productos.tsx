@@ -6,22 +6,28 @@ import autoTable from "jspdf-autotable";
 import ExcelJS from "exceljs";
 
 import {
-  listarCategoriasActivas,
-  crearCategoria,
-  actualizarCategoria,
-  anularCategoria,
-} from "../services/categoriaServices";
+  listarProductosActivos,
+  crearProducto,
+  actualizarProducto,
+  anularProducto,
+} from "../services/productoServices";
+import { listarCategoriasActivas } from "../services/categoriaServices";
+import type { Producto } from "../types/Producto";
 import type { Categoria } from "../types/categoria";
 
-const formInicial: Categoria = {
+const formInicial: Producto = {
+  idProducto: null,
   idCategoria: null,
   nombre: "",
   descripcion: "",
+  precio: 0,
+  stock: 0,
 };
 
-function Categorias() {
+function Productos() {
+  const [productos, setProductos] = useState<Producto[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [form, setForm] = useState<Categoria>(formInicial);
+  const [form, setForm] = useState<Producto>(formInicial);
   const [modoEdicion, setModoEdicion] = useState(false);
   const [mensaje, setMensaje] = useState("");
 
@@ -35,47 +41,70 @@ function Categorias() {
     return "Ocurrió un error inesperado";
   };
 
+  const nombreCategoria = (idCategoria: number | null): string => {
+    const categoria = categorias.find((c) => c.idCategoria === idCategoria);
+    return categoria ? categoria.nombre : "—";
+  };
+
+  const cargarProductos = async () => {
+    try {
+      const respuesta = await listarProductosActivos();
+      setProductos(respuesta.data);
+    } catch (error) {
+      setMensaje(obtenerMensajeError(error));
+      console.error("Error al listar productos", error);
+    }
+  };
+
   const cargarCategorias = async () => {
     try {
       const respuesta = await listarCategoriasActivas();
       setCategorias(respuesta.data);
     } catch (error) {
-      setMensaje(obtenerMensajeError(error));
       console.error("Error al listar categorías", error);
     }
   };
 
   useEffect(() => {
+    cargarProductos();
     cargarCategorias();
   }, []);
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => ({
+      ...prev,
+      [name]:
+        name === "precio" || name === "stock" || name === "idCategoria"
+          ? Number(value)
+          : value,
+    }));
   };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     try {
-      if (modoEdicion && form.idCategoria !== null) {
-        await actualizarCategoria(form.idCategoria, form);
-        setMensaje("Categoría actualizada correctamente");
+      if (modoEdicion && form.idProducto !== null) {
+        await actualizarProducto(form.idProducto, form);
+        setMensaje("Producto actualizado correctamente");
       } else {
-        await crearCategoria(form);
-        setMensaje("Categoría creada correctamente");
+        await crearProducto(form);
+        setMensaje("Producto creado correctamente");
       }
       setForm(formInicial);
       setModoEdicion(false);
-      cargarCategorias();
+      cargarProductos();
     } catch (error) {
       setMensaje(obtenerMensajeError(error));
-      console.error("Error al guardar categoría", error);
+      console.error("Error al guardar producto", error);
     }
   };
 
-  const handleModificar = (categoria: Categoria) => {
-    setForm({ ...categoria });
+  const handleModificar = (producto: Producto) => {
+    setForm({ ...producto });
     setModoEdicion(true);
   };
 
@@ -87,21 +116,20 @@ function Categorias() {
   const generarPDF = () => {
     const doc = new jsPDF();
 
-    // 1. Título del reporte
-    doc.text("Listado de Categorías", 14, 15);
+    doc.text("Listado de Productos", 14, 15);
 
-    // 2. Preparar los datos de la tabla
-    const columnas = ["Nombre", "Direccion"];
-    const filas = categorias.map((categoria) => [
-      categoria.nombre,
-      categoria.descripcion,
+    const columnas = ["Nombre", "Categoría", "Precio", "Stock"];
+    const filas = productos.map((producto) => [
+      producto.nombre,
+      nombreCategoria(producto.idCategoria),
+      producto.precio.toFixed(2),
+      String(producto.stock),
     ]);
 
-    // 3. Dibujar la tabla
     autoTable(doc, {
       head: [columnas],
       body: filas,
-      startY: 20, // para que no choque con el título
+      startY: 20,
     });
 
     return doc;
@@ -109,7 +137,7 @@ function Categorias() {
 
   const exportarPDF = () => {
     const doc = generarPDF();
-    doc.save("categorias.pdf");
+    doc.save("productos.pdf");
   };
 
   const verPDF = () => {
@@ -119,17 +147,14 @@ function Categorias() {
   };
 
   const exportarExcel = async () => {
-    // 1. Crear el libro y la hoja
     const libro = new ExcelJS.Workbook();
-    const hoja = libro.addWorksheet("Categorías");
+    const hoja = libro.addWorksheet("Productos");
 
-    // 2. Título y fecha
-    hoja.addRow(["Listado de Categorías"]).font = { size: 16, bold: true };
+    hoja.addRow(["Listado de Productos"]).font = { size: 16, bold: true };
     hoja.addRow(["Fecha: " + new Date().toLocaleDateString()]);
-    hoja.addRow([]); // fila vacía de separación
+    hoja.addRow([]);
 
-    // 3. Encabezados de la tabla (mismos colores que el PDF)
-    const encabezado = hoja.addRow(["Nombre", "Descripción"]);
+    const encabezado = hoja.addRow(["Nombre", "Categoría", "Precio", "Stock"]);
     encabezado.eachCell((celda) => {
       celda.font = { bold: true, color: { argb: "FFFFFFFF" } };
       celda.fill = {
@@ -145,9 +170,13 @@ function Categorias() {
       };
     });
 
-    // 4. Filas de datos
-    categorias.forEach((categoria, indice) => {
-      const fila = hoja.addRow([categoria.nombre, categoria.descripcion]);
+    productos.forEach((producto, indice) => {
+      const fila = hoja.addRow([
+        producto.nombre,
+        nombreCategoria(producto.idCategoria),
+        producto.precio,
+        producto.stock,
+      ]);
       fila.eachCell((celda) => {
         celda.border = {
           top: { style: "thin" },
@@ -155,7 +184,6 @@ function Categorias() {
           bottom: { style: "thin" },
           right: { style: "thin" },
         };
-        // filas alternadas en verde claro, como en el PDF
         if (indice % 2 === 1) {
           celda.fill = {
             type: "pattern",
@@ -166,11 +194,11 @@ function Categorias() {
       });
     });
 
-    // 5. Ancho de columnas
     hoja.getColumn(1).width = 30;
-    hoja.getColumn(2).width = 60;
+    hoja.getColumn(2).width = 25;
+    hoja.getColumn(3).width = 15;
+    hoja.getColumn(4).width = 10;
 
-    // 6. Generar el archivo y descargarlo
     const buffer = await libro.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -178,31 +206,53 @@ function Categorias() {
     const url = URL.createObjectURL(blob);
     const enlace = document.createElement("a");
     enlace.href = url;
-    enlace.download = "categorias.xlsx";
+    enlace.download = "productos.xlsx";
     enlace.click();
     URL.revokeObjectURL(url);
   };
 
-  const handleAnular = async (idCategoria: number) => {
+  const handleAnular = async (idProducto: number) => {
     const confirmar = window.confirm(
-      "¿Seguro que deseas anular esta categoría?",
+      "¿Seguro que deseas anular este producto?",
     );
     if (!confirmar) return;
     try {
-      await anularCategoria(idCategoria);
-      setMensaje("Categoría anulada correctamente");
-      cargarCategorias();
+      await anularProducto(idProducto);
+      setMensaje("Producto anulado correctamente");
+      cargarProductos();
     } catch (error) {
       setMensaje(obtenerMensajeError(error));
-      console.error("Error al anular la categoría", error);
+      console.error("Error al anular el producto", error);
     }
   };
 
   return (
     <div>
-      <h2>{modoEdicion ? "Modificar Categoría" : "Ingresar Categoría"}</h2>
+      <h2>{modoEdicion ? "Modificar Producto" : "Ingresar Producto"}</h2>
       {mensaje && <p>{mensaje}</p>}
       <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="idCategoria">Categoría:</label>
+          <select
+            id="idCategoria"
+            name="idCategoria"
+            value={form.idCategoria ?? ""}
+            onChange={handleChange}
+            required
+          >
+            <option value="" disabled>
+              Selecciona una categoría
+            </option>
+            {categorias.map((categoria) => (
+              <option
+                key={categoria.idCategoria}
+                value={categoria.idCategoria ?? ""}
+              >
+                {categoria.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label htmlFor="nombre">Nombre:</label>
           <input
@@ -211,7 +261,6 @@ function Categorias() {
             name="nombre"
             value={form.nombre}
             onChange={handleChange}
-            maxLength={100}
             required
           />
         </div>
@@ -223,7 +272,31 @@ function Categorias() {
             name="descripcion"
             value={form.descripcion}
             onChange={handleChange}
-            maxLength={255}
+          />
+        </div>
+        <div>
+          <label htmlFor="precio">Precio:</label>
+          <input
+            type="number"
+            id="precio"
+            name="precio"
+            value={form.precio}
+            onChange={handleChange}
+            min={0}
+            step="0.01"
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="stock">Stock:</label>
+          <input
+            type="number"
+            id="stock"
+            name="stock"
+            value={form.stock}
+            onChange={handleChange}
+            min={0}
+            required
           />
         </div>
         <button type="submit">{modoEdicion ? "Actualizar" : "Guardar"}</button>
@@ -233,7 +306,7 @@ function Categorias() {
           </button>
         )}
       </form>
-      <h2>Listado de Categorías</h2>
+      <h2>Listado de Productos</h2>
       <button
         onClick={exportarPDF}
         className="bg-green-500 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded mb-4"
@@ -256,26 +329,30 @@ function Categorias() {
         <thead>
           <tr>
             <th>Nombre</th>
-            <th>Descripción</th>
+            <th>Categoría</th>
+            <th>Precio</th>
+            <th>Stock</th>
             <th>Modificar</th>
             <th>Anular</th>
           </tr>
         </thead>
         <tbody>
-          {categorias.map((categoria) => (
-            <tr key={categoria.idCategoria}>
-              <td>{categoria.nombre}</td>
-              <td>{categoria.descripcion}</td>
+          {productos.map((producto) => (
+            <tr key={producto.idProducto}>
+              <td>{producto.nombre}</td>
+              <td>{nombreCategoria(producto.idCategoria)}</td>
+              <td>{producto.precio}</td>
+              <td>{producto.stock}</td>
               <td>
-                <button onClick={() => handleModificar(categoria)}>
+                <button onClick={() => handleModificar(producto)}>
                   Modificar
                 </button>
               </td>
               <td>
                 <button
                   onClick={() =>
-                    categoria.idCategoria !== null &&
-                    handleAnular(categoria.idCategoria)
+                    producto.idProducto !== null &&
+                    handleAnular(producto.idProducto)
                   }
                 >
                   Anular
@@ -288,4 +365,4 @@ function Categorias() {
     </div>
   );
 }
-export default Categorias;
+export default Productos;
